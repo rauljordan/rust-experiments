@@ -1,0 +1,20 @@
+[package]
+name = "playground"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+structopt = "0.3.23"
+serde = { version ="1.0.145", features = ["derive"] }
+thiserror = "1.0.37"
+eyre = "0.6.8"
+tokio = { version = "1.4.0", features = ["full"] }
+lazy_static = "1.4.0"
+rand = "0.8.3"
+tokio-stream = "0.1"
+futures = "0.3.25"
+reqwest = { version = "0.11", features = ["json"] }
+alphabet = "0.2.2"
+sha3 = "0.7.2"
