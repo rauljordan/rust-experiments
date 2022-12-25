@@ -189,6 +189,21 @@ dependencies = [
 [[package]]
 name = "collections-profiling"
 version = "0.1.0"
+dependencies = [
+ "alphabet",
+ "eyre",
+ "futures",
+ "lazy_static",
+ "plotters",
+ "rand",
+ "reqwest",
+ "serde",
+ "sha3",
+ "structopt",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+]
 
 [[package]]
 name = "color_quant"
@@ -578,6 +593,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzzing"
+version = "0.1.0"
+
+[[package]]
 name = "generic-array"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -606,10 +625,6 @@ dependencies = [
  "color_quant",
  "weezl",
 ]
-
-[[package]]
-name = "gpt"
-version = "0.1.0"
 
 [[package]]
 name = "h2"
@@ -1108,25 +1123,6 @@ name = "pkg-config"
 version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ac9a59f73473f1b8d852421e59e64809f025994837ef743615c6d0c5b305160"
-
-[[package]]
-name = "playground"
-version = "0.1.0"
-dependencies = [
- "alphabet",
- "eyre",
- "futures",
- "lazy_static",
- "plotters",
- "rand",
- "reqwest",
- "serde",
- "sha3",
- "structopt",
- "thiserror",
- "tokio",
- "tokio-stream",
-]
 
 [[package]]
 name = "plotters"
