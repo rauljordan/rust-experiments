@@ -595,6 +595,9 @@ dependencies = [
 [[package]]
 name = "fuzzing"
 version = "0.1.0"
+dependencies = [
+ "rand",
+]
 
 [[package]]
 name = "generic-array"

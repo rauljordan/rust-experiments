@@ -1,9 +1,9 @@
+use rand::prelude::*;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
-use std::thread::sleep;
 
 fn main() -> io::Result<()> {
     let wd = env::current_dir().unwrap();
@@ -17,17 +17,22 @@ fn main() -> io::Result<()> {
         })
         .collect();
 
+    let mut rng = thread_rng();
+
     loop {
         let now = std::time::Instant::now();
-        fuzz_entries(&entries)?;
+        fuzz_entries(&rng, &entries)?;
         let elapsed = now.elapsed().as_secs_f64();
         println!("fcps {:?}", (entries.len() as f64) / elapsed);
     }
 }
 
-fn fuzz_entries(entries: &Vec<Vec<u8>>) -> io::Result<()> {
+fn fuzz_entries(rng: &ThreadRng, entries: &Vec<Vec<u8>>) -> io::Result<()> {
     for entry in entries.iter() {
-        fuzz(entry.as_slice())?;
+        let num_elems_to_mutate = rng.gen_range(0..entry.len());
+        println!("{}", num_elems_to_mutate);
+        let input = entry.as_slice();
+        fuzz(input)?;
     }
     Ok(())
 }
