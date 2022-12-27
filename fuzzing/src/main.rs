@@ -1,9 +1,24 @@
-use rand::prelude::*;
+mod riscv;
+
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
+
+struct Tracker {
+    cases_processed: AtomicI32,
+}
+
+impl Tracker {
+    pub fn new() -> Self {
+        Self {
+            cases_processed: AtomicI32::new(0),
+        }
+    }
+}
 
 fn main() -> io::Result<()> {
     let wd = env::current_dir().unwrap();
@@ -17,22 +32,42 @@ fn main() -> io::Result<()> {
         })
         .collect();
 
-    let mut rng = thread_rng();
+    // let mut rng = thread_rng();
 
+    let tracker = Arc::new(Tracker::new());
+    for _ in 0..8 {
+        let tracker = tracker.clone();
+        let entries = entries.clone();
+        std::thread::spawn(move || worker(tracker, entries));
+    }
+
+    let start = std::time::Instant::now();
     loop {
-        let now = std::time::Instant::now();
-        fuzz_entries(&rng, &entries)?;
-        let elapsed = now.elapsed().as_secs_f64();
-        println!("fcps {:?}", (entries.len() as f64) / elapsed);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let elapsed = start.elapsed().as_secs_f64();
+        let cases = tracker.cases_processed.load(Ordering::SeqCst);
+        println!("fcps {:?}", (cases as f64) / elapsed);
     }
 }
 
-fn fuzz_entries(rng: &ThreadRng, entries: &Vec<Vec<u8>>) -> io::Result<()> {
+fn worker(tracker: Arc<Tracker>, entries: Vec<Vec<u8>>) {
+    loop {
+        match fuzz_entries(&entries) {
+            Ok(()) => {
+                tracker
+                    .cases_processed
+                    .fetch_add(entries.len() as i32, Ordering::SeqCst);
+            }
+            Err(e) => {
+                panic!("{}", e);
+            }
+        }
+    }
+}
+
+fn fuzz_entries(entries: &Vec<Vec<u8>>) -> io::Result<()> {
     for entry in entries.iter() {
-        let num_elems_to_mutate = rng.gen_range(0..entry.len());
-        println!("{}", num_elems_to_mutate);
-        let input = entry.as_slice();
-        fuzz(input)?;
+        fuzz(entry)?;
     }
     Ok(())
 }
@@ -55,7 +90,7 @@ fn fuzz(input: &[u8]) -> io::Result<()> {
             if code == 1 {
                 return Ok(());
             }
-            io::stderr().write_all(&output.stderr).unwrap();
+            // io::stderr().write_all(&output.stderr).unwrap();
         }
         Err(e) => {
             println!("Failed with {:?}", e);
