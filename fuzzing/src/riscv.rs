@@ -7,25 +7,26 @@ mod tests {
         let tmp = emu.mmu.allocate(4096).unwrap();
         let data = b"asdf";
         emu.mmu.write_from(VirtAddr(tmp.0), data).unwrap();
+        println!("Original dirty {:x?}", emu.mmu.dirty);
+
         {
             let mut forked = emu.mmu.fork();
+            // Write and read into forked mem.
+            forked.write_from(VirtAddr(tmp.0), data).unwrap();
             let mut bytes = [0u8; 4];
             forked.read_into(tmp, &mut bytes).unwrap();
             println!("Forked dirty {:x?}", forked.dirty);
 
             forked.reset(&emu.mmu);
 
-            forked.write_from(VirtAddr(tmp.0), data).unwrap();
-
             let mut bytes = [0u8; 4];
-            forked.read_into(tmp, &mut bytes).unwrap();
-            println!("Forked dirty after write {:x?}", forked.dirty);
+            let read_result = forked.read_into(tmp, &mut bytes);
+            println!("{:?}", read_result);
+
+            println!("Forked after reset {:x?}", forked.dirty);
         }
-        let mut bytes = [0u8; 4];
-        emu.mmu.read_into(tmp, &mut bytes).unwrap();
-        println!("Original dirty {:x?}", emu.mmu.dirty);
     }
-    //#[test]
+    #[test]
     fn allocate_then_write_then_read() {
         let mut emu = Emulator::new(1024 * 1024);
         let tmp = emu.mmu.allocate(4096);
@@ -34,10 +35,7 @@ mod tests {
         let data = b"asdf";
         assert_eq!(emu.mmu.write_from(VirtAddr(tmp.0), data).is_some(), true);
         let mut buf = vec![0u8; 32];
-        println!("{:x?}", buf);
-        assert_eq!(emu.mmu.read_into(tmp, &mut buf).is_some(), true);
-        println!("{:x?}", buf);
-        println!("{:?}", emu.mmu.dirty);
+        assert_eq!(emu.mmu.read_into(tmp, &mut buf).is_none(), true);
     }
 }
 
@@ -99,7 +97,11 @@ impl Mmu {
             // Zero the bitmap.
             self.dirty_bitmap[block / 64] = 0;
 
-            self.memory[start..end].copy_from_slice(other.memory.as_slice())
+            // Restore memory.
+            self.memory[start..end].copy_from_slice(&other.memory[start..end]);
+
+            // Restore permissions.
+            self.permissions[start..end].copy_from_slice(&other.permissions[start..end]);
         }
         self.dirty.clear();
     }
@@ -148,6 +150,13 @@ impl Mmu {
         Some(())
     }
     pub fn read_into(&mut self, addr: VirtAddr, buf: &mut [u8]) -> Option<()> {
+        let perms = self
+            .permissions
+            .get(addr.0..addr.0.checked_add(buf.len())?)?;
+
+        if !perms.iter().all(|x| (x.0 & PERM_READ) != 0) {
+            return None;
+        }
         buf.copy_from_slice(
             self.memory
                 .get_mut(addr.0..addr.0.checked_add(buf.len())?)?,

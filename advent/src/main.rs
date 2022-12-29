@@ -1,6 +1,75 @@
 use std::collections::{HashMap, HashSet};
 
-fn main() {}
+fn main() -> eyre::Result<()> {
+    println!("Day 10: {}", ten()?);
+    Ok(())
+}
+
+pub fn ten() -> eyre::Result<i64> {
+    let input = std::fs::read_to_string("/home/zodiark/Downloads/input10.txt")?;
+    let instructions: Vec<&str> = input.split("\n").collect();
+    let ops: Vec<Op> = instructions
+        .into_iter()
+        .map(|line| {
+            let data: Vec<&str> = line.split(" ").collect();
+            if data.len() == 1 {
+                return Op::Noop;
+            }
+            return Op::Addx(data[1].parse().unwrap());
+        })
+        .collect();
+    let cycles_to_check = vec![20, 60, 100, 140, 180, 220];
+    let mut cpu = Cpu::new(cycles_to_check);
+    cpu.run(ops);
+    let total_strength = cpu
+        .signal_strengths
+        .into_iter()
+        .map(|(_, v)| v)
+        .sum::<i64>();
+    Ok(total_strength)
+}
+
+enum Op {
+    Noop,
+    Addx(i64),
+}
+
+struct Cpu {
+    x: i64,
+    cycle: i64,
+    pub signal_strengths: HashMap<i64, i64>,
+}
+
+impl Cpu {
+    pub fn new(cycles_to_check: Vec<i64>) -> Self {
+        let signal_strengths: HashMap<i64, i64> =
+            cycles_to_check.into_iter().map(|c| (c, 0)).collect();
+        Self {
+            x: 1,
+            cycle: 0,
+            signal_strengths,
+        }
+    }
+    pub fn inc_cycle(&mut self) {
+        self.cycle += 1;
+        if self.signal_strengths.contains_key(&self.cycle) {
+            self.signal_strengths
+                .insert(self.cycle, self.cycle * self.x);
+        }
+    }
+    pub fn run(&mut self, code: Vec<Op>) {
+        code.into_iter().for_each(|op| match op {
+            Op::Noop => {
+                self.inc_cycle();
+            }
+            Op::Addx(v) => {
+                self.inc_cycle();
+                self.inc_cycle();
+                self.x += v;
+            }
+        });
+    }
+}
 
 pub fn one2() -> eyre::Result<u64> {
     let input = std::fs::read_to_string("/home/zodiark/Downloads/input.txt")?;

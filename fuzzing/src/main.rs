@@ -1,5 +1,3 @@
-mod riscv;
-
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -7,6 +5,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
+
+mod riscv;
+
+use riscv::*;
 
 struct Tracker {
     cases_processed: AtomicI32,
@@ -20,7 +22,20 @@ impl Tracker {
     }
 }
 
-fn main() -> io::Result<()> {
+fn main() {
+    let mut emu = Emulator::new(1024 * 1024);
+    let tmp = emu.mmu.allocate(4).unwrap();
+    emu.mmu.write_from(tmp, b"asdf").unwrap();
+    {
+        let mut forked = emu.mmu.fork();
+        for ii in 0..100_100_100 {
+            emu.mmu.write_from(tmp, b"asdf").unwrap();
+            forked.reset(&emu.mmu);
+        }
+    }
+}
+
+fn fuzzy_main() -> io::Result<()> {
     let wd = env::current_dir().unwrap();
     let corpus_path = wd.join("fuzzing/corpus");
     let entries: Vec<Vec<u8>> = fs::read_dir(corpus_path)
