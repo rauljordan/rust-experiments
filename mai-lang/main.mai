@@ -1,0 +1,7 @@
+mai safe_sub(x, y) {
+    if (x > y) {
+        return x - y;
+    } else {
+        return 0;
+    }
+}

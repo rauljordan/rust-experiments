@@ -5,4 +5,5 @@ members = [
     "collections-profiling",
     "fuzzing",
     "wasmvm",
+    "stdlib",
 ]
