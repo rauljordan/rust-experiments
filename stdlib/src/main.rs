@@ -1,4 +1,5 @@
 #![feature(naked_functions)]
+mod atomics;
 mod green_threads;
 
 use green_threads::*;

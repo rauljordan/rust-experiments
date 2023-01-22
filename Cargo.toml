@@ -6,4 +6,6 @@ members = [
     "fuzzing",
     "wasmvm",
     "stdlib",
+    "mai-lang",
+    "blackjack-rs",
 ]
