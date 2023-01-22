@@ -8,4 +8,5 @@ members = [
     "stdlib",
     "mai-lang",
     "blackjack-rs",
+    "roguelike",
 ]
