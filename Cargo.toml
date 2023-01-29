@@ -9,4 +9,6 @@ members = [
     "mai-lang",
     "blackjack-rs",
     "roguelike",
+    "bevygame",
 ]
+resolver = "2" # Important! wgpu/Bevy needs this!
