@@ -1,3 +1,4 @@
+use map_indexing_system::MapIndexingSystem;
 use rltk::{GameState, Point, Rltk, VirtualKeyCode, RGB};
 use specs::prelude::*;
 use specs_derive::Component;
@@ -5,10 +6,11 @@ use std::cmp::{max, min};
 
 mod components;
 mod map;
+mod map_indexing_system;
 mod monster_ai_system;
 mod visibility_system;
 
-use components::{Monster, Name};
+use components::{BlocksTile, Monster, Name};
 use map::{draw_map, rand_map_rooms_and_corridors, Map, TileType};
 use monster_ai_system::MonsterAI;
 use visibility_system::VisibilitySystem;
@@ -33,6 +35,7 @@ fn main() -> rltk::BError {
     reg!(Map);
     reg!(Monster);
     reg!(Name);
+    reg!(BlocksTile);
 
     let map = rand_map_rooms_and_corridors();
     let (player_x, player_y) = map.rooms[0].center();
@@ -71,6 +74,7 @@ fn main() -> rltk::BError {
             .with(Name {
                 name: format!("{} #{}", &name, i),
             })
+            .with(BlocksTile {})
             .build();
     }
 
@@ -118,7 +122,8 @@ fn try_move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
     let map = ecs.fetch::<Map>();
     for (_player, pos, viewshed) in (&mut players, &mut positions, &mut viewsheds).join() {
         let dest = map.xy_idx(pos.x + delta_x, pos.y + delta_y);
-        if map.tiles[dest] != TileType::Wall {
+
+        if !map.blocked[dest] {
             pos.x = min(79, max(0, pos.x + delta_x));
             pos.y = min(49, max(0, pos.y + delta_y));
 
@@ -160,6 +165,8 @@ impl State {
         vis.run_now(&self.ecs);
         let mut mob = MonsterAI {};
         mob.run_now(&self.ecs);
+        let mut mapindex = MapIndexingSystem {};
+        mapindex.run_now(&self.ecs);
         self.ecs.maintain();
     }
 
@@ -173,6 +180,12 @@ impl State {
                 L => try_move_player(1, 0, &mut self.ecs),
                 K => try_move_player(0, -1, &mut self.ecs),
                 J => try_move_player(0, 1, &mut self.ecs),
+
+                // Diagonal.
+                B => try_move_player(-1, 1, &mut self.ecs),
+                O => try_move_player(1, -1, &mut self.ecs),
+                M => try_move_player(1, 1, &mut self.ecs),
+                Y => try_move_player(-1, -1, &mut self.ecs),
                 _ => return Paused,
             },
         }

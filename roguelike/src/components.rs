@@ -8,3 +8,6 @@ pub struct Name {
 
 #[derive(Component, Debug)]
 pub struct Monster;
+
+#[derive(Component, Debug)]
+pub struct BlocksTile {}
