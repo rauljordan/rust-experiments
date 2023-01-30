@@ -8,10 +8,12 @@ use std::cmp::{max, min};
 
 mod components;
 mod damage_system;
+mod gamelog;
 mod map;
 mod map_indexing_system;
 mod melee_combat_system;
 mod monster_ai_system;
+mod ui;
 mod visibility_system;
 
 use components::{BlocksTile, CombatStats, Monster, Name};
@@ -23,7 +25,8 @@ use crate::components::{MeleeIntent, SufferDamage};
 
 fn main() -> rltk::BError {
     use rltk::RltkBuilder;
-    let context = RltkBuilder::simple80x50().with_title("Rogue").build()?;
+    let mut context = RltkBuilder::simple80x50().with_title("Rogue").build()?;
+    context.with_post_scanlines(true); // Add burn.
     let mut gs = State { ecs: World::new() };
     macro_rules! reg {
         ($name:ident) => {
@@ -124,6 +127,9 @@ fn main() -> rltk::BError {
 
     gs.ecs.insert(player_entity);
     gs.ecs.insert(Point::new(player_x, player_y));
+    gs.ecs.insert(gamelog::GameLog {
+        entries: vec!["Welcome to roguelike".to_string()],
+    });
 
     rltk::main_loop(context, gs)
 }
@@ -254,11 +260,18 @@ pub fn delete_the_dead(ecs: &mut World) {
     {
         let combat_stats = ecs.read_storage::<CombatStats>();
         let players = ecs.read_storage::<Player>();
+        let names = ecs.read_storage::<Name>();
         let entities = ecs.entities();
+        let mut log = ecs.write_resource::<gamelog::GameLog>();
         for (entity, stats) in (&entities, &combat_stats).join() {
             if stats.hp < 1 {
                 match players.get(entity) {
-                    None => dead.push(entity),
+                    None => {
+                        if let Some(victim_name) = names.get(entity) {
+                            log.entries.push(format!("{} is dead", &victim_name.name));
+                        }
+                        dead.push(entity);
+                    }
                     Some(_) => console::log("You are dead"),
                 }
             }
@@ -330,5 +343,7 @@ impl GameState for State {
                 ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
             }
         }
+
+        ui::draw_ui(&self.ecs, ctx);
     }
 }
