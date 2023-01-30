@@ -19,27 +19,33 @@ impl<'a> System<'a> for MeleeCombatSystem {
         for (_entity, wants_melee, name, stats) in
             (&entities, &wants_melee, &names, &combat_stats).join()
         {
-            if stats.hp <= 0 {
-                continue;
-            }
-            let target_stats = combat_stats.get(wants_melee.target).unwrap();
-            if target_stats.hp <= 0 {
-                continue;
-            }
-            let target_name = names.get(wants_melee.target).unwrap();
-            let damage = i32::max(0, stats.power - target_stats.defense);
+            if stats.hp > 0 {
+                let target_stats = combat_stats.get(wants_melee.target);
+                if target_stats.is_none() {
+                    continue;
+                }
+                let target_stats = target_stats.unwrap();
+                if target_stats.hp > 0 {
+                    let target_name = names.get(wants_melee.target);
+                    if target_name.is_none() {
+                        continue;
+                    }
+                    let target_name = target_name.unwrap();
+                    let damage = i32::max(0, stats.power - target_stats.defense);
 
-            if damage == 0 {
-                console::log(&format!(
-                    "{} is unable to hurt {}",
-                    &name.name, &target_name.name
-                ));
-            } else {
-                console::log(&format!(
-                    "{} hits {}, for {} hp.",
-                    &name.name, &target_name.name, damage
-                ));
-                SufferDamage::new_damage(&mut inflict, wants_melee.target, damage);
+                    if damage == 0 {
+                        console::log(&format!(
+                            "{} is unable to hurt {}",
+                            &name.name, &target_name.name
+                        ));
+                    } else {
+                        console::log(&format!(
+                            "{} hits {}, for {} hp.",
+                            &name.name, &target_name.name, damage
+                        ));
+                        SufferDamage::new_damage(&mut inflict, wants_melee.target, damage);
+                    }
+                }
             }
         }
     }

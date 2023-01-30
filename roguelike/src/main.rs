@@ -24,10 +24,7 @@ use crate::components::{MeleeIntent, SufferDamage};
 fn main() -> rltk::BError {
     use rltk::RltkBuilder;
     let context = RltkBuilder::simple80x50().with_title("Rogue").build()?;
-    let mut gs = State {
-        ecs: World::new(),
-        runstate: RunState::Running,
-    };
+    let mut gs = State { ecs: World::new() };
     macro_rules! reg {
         ($name:ident) => {
             gs.ecs.register::<$name>();
@@ -94,8 +91,10 @@ fn main() -> rltk::BError {
     }
 
     gs.ecs.insert(map);
+    gs.ecs.insert(RunState::PreRun);
 
-    gs.ecs
+    let player_entity = gs
+        .ecs
         .create_entity()
         .with(Position {
             x: player_x,
@@ -123,6 +122,7 @@ fn main() -> rltk::BError {
         })
         .build();
 
+    gs.ecs.insert(player_entity);
     gs.ecs.insert(Point::new(player_x, player_y));
 
     rltk::main_loop(context, gs)
@@ -201,13 +201,14 @@ impl<'a> System<'a> for LeftWalker {
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RunState {
-    Paused,
-    Running,
+    AwaitingInput,
+    PreRun,
+    PlayerTurn,
+    MonsterTurn,
 }
 
 struct State {
     ecs: World,
-    runstate: RunState,
 }
 
 impl State {
@@ -229,7 +230,7 @@ impl State {
         use RunState::*;
         use VirtualKeyCode::*;
         match ctx.key {
-            None => return Paused,
+            None => return AwaitingInput,
             Some(key) => match key {
                 H => try_move_player(-1, 0, &mut self.ecs),
                 L => try_move_player(1, 0, &mut self.ecs),
@@ -241,10 +242,10 @@ impl State {
                 O => try_move_player(1, -1, &mut self.ecs),
                 M => try_move_player(1, 1, &mut self.ecs),
                 Y => try_move_player(-1, -1, &mut self.ecs),
-                _ => return Paused,
+                _ => return AwaitingInput,
             },
         }
-        Running
+        PlayerTurn
     }
 }
 
@@ -287,16 +288,39 @@ struct LeftMover {}
 impl GameState for State {
     fn tick(&mut self, ctx: &mut Rltk) {
         ctx.cls();
-
-        if self.runstate == RunState::Running {
-            self.run_systems();
-            delete_the_dead(&mut self.ecs);
-            self.runstate = RunState::Paused;
-        } else {
-            self.runstate = self.player_input(ctx);
+        let mut newrunstate;
+        {
+            let runstate = self.ecs.fetch::<RunState>();
+            newrunstate = *runstate;
         }
 
+        match newrunstate {
+            RunState::PreRun => {
+                self.run_systems();
+                newrunstate = RunState::AwaitingInput;
+            }
+            RunState::AwaitingInput => {
+                newrunstate = self.player_input(ctx);
+            }
+            RunState::PlayerTurn => {
+                self.run_systems();
+                newrunstate = RunState::MonsterTurn;
+            }
+            RunState::MonsterTurn => {
+                self.run_systems();
+                newrunstate = RunState::AwaitingInput;
+            }
+        }
+
+        {
+            let mut runwriter = self.ecs.write_resource::<RunState>();
+            *runwriter = newrunstate;
+        }
+
+        delete_the_dead(&mut self.ecs);
+
         draw_map(&self.ecs, ctx);
+
         let positions = self.ecs.read_storage::<Position>();
         let renderables = self.ecs.read_storage::<Renderable>();
         let map = self.ecs.fetch::<Map>();
