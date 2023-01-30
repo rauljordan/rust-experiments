@@ -1,19 +1,25 @@
+use damage_system::DamageSystem;
 use map_indexing_system::MapIndexingSystem;
-use rltk::{GameState, Point, Rltk, VirtualKeyCode, RGB};
+use melee_combat_system::MeleeCombatSystem;
+use rltk::{console, GameState, Point, Rltk, VirtualKeyCode, RGB};
 use specs::prelude::*;
 use specs_derive::Component;
 use std::cmp::{max, min};
 
 mod components;
+mod damage_system;
 mod map;
 mod map_indexing_system;
+mod melee_combat_system;
 mod monster_ai_system;
 mod visibility_system;
 
-use components::{BlocksTile, Monster, Name};
+use components::{BlocksTile, CombatStats, Monster, Name};
 use map::{draw_map, rand_map_rooms_and_corridors, Map, TileType};
 use monster_ai_system::MonsterAI;
 use visibility_system::VisibilitySystem;
+
+use crate::components::{MeleeIntent, SufferDamage};
 
 fn main() -> rltk::BError {
     use rltk::RltkBuilder;
@@ -36,6 +42,9 @@ fn main() -> rltk::BError {
     reg!(Monster);
     reg!(Name);
     reg!(BlocksTile);
+    reg!(CombatStats);
+    reg!(MeleeIntent);
+    reg!(SufferDamage);
 
     let map = rand_map_rooms_and_corridors();
     let (player_x, player_y) = map.rooms[0].center();
@@ -74,6 +83,12 @@ fn main() -> rltk::BError {
             .with(Name {
                 name: format!("{} #{}", &name, i),
             })
+            .with(CombatStats {
+                max_hp: 15,
+                hp: 15,
+                defense: 1,
+                power: 3,
+            })
             .with(BlocksTile {})
             .build();
     }
@@ -92,6 +107,15 @@ fn main() -> rltk::BError {
             bg: RGB::named(rltk::BLACK),
         })
         .with(Player {})
+        .with(Name {
+            name: "player".to_string(),
+        })
+        .with(CombatStats {
+            max_hp: 30,
+            hp: 30,
+            defense: 2,
+            power: 5,
+        })
         .with(Viewshed {
             visible_tiles: Vec::new(),
             range: 8,
@@ -119,10 +143,37 @@ fn try_move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
     let mut players = ecs.write_storage::<Player>();
     let mut viewsheds = ecs.write_storage::<Viewshed>();
     let mut ppos = ecs.write_resource::<Point>();
-    let map = ecs.fetch::<Map>();
-    for (_player, pos, viewshed) in (&mut players, &mut positions, &mut viewsheds).join() {
-        let dest = map.xy_idx(pos.x + delta_x, pos.y + delta_y);
+    let mut intent_to_melee = ecs.write_storage::<MeleeIntent>();
 
+    let combat_stats = ecs.read_storage::<CombatStats>();
+    let map = ecs.fetch::<Map>();
+    let entities = ecs.entities();
+
+    for (entity, _player, pos, viewshed) in
+        (&entities, &mut players, &mut positions, &mut viewsheds).join()
+    {
+        if pos.x + delta_x < 1
+            || pos.x + delta_x > map.width - 1
+            || pos.y + delta_y < 1
+            || pos.y + delta_y > map.height - 1
+        {
+            return;
+        }
+        let dest = map.xy_idx(pos.x + delta_x, pos.y + delta_y);
+        for potential_target in map.tile_content[dest].iter() {
+            let target = combat_stats.get(*potential_target);
+            if let Some(_target) = target {
+                intent_to_melee
+                    .insert(
+                        entity,
+                        MeleeIntent {
+                            target: *potential_target,
+                        },
+                    )
+                    .expect("Add target failed");
+                return;
+            }
+        }
         if !map.blocked[dest] {
             pos.x = min(79, max(0, pos.x + delta_x));
             pos.y = min(49, max(0, pos.y + delta_y));
@@ -167,6 +218,10 @@ impl State {
         mob.run_now(&self.ecs);
         let mut mapindex = MapIndexingSystem {};
         mapindex.run_now(&self.ecs);
+        let mut melee = MeleeCombatSystem {};
+        melee.run_now(&self.ecs);
+        let mut dmg = DamageSystem {};
+        dmg.run_now(&self.ecs);
         self.ecs.maintain();
     }
 
@@ -193,6 +248,26 @@ impl State {
     }
 }
 
+pub fn delete_the_dead(ecs: &mut World) {
+    let mut dead: Vec<Entity> = Vec::new();
+    {
+        let combat_stats = ecs.read_storage::<CombatStats>();
+        let players = ecs.read_storage::<Player>();
+        let entities = ecs.entities();
+        for (entity, stats) in (&entities, &combat_stats).join() {
+            if stats.hp < 1 {
+                match players.get(entity) {
+                    None => dead.push(entity),
+                    Some(_) => console::log("You are dead"),
+                }
+            }
+        }
+    }
+    for victim in dead {
+        ecs.delete_entity(victim).expect("unable to delete");
+    }
+}
+
 #[derive(Component)]
 pub struct Position {
     x: i32,
@@ -215,6 +290,7 @@ impl GameState for State {
 
         if self.runstate == RunState::Running {
             self.run_systems();
+            delete_the_dead(&mut self.ecs);
             self.runstate = RunState::Paused;
         } else {
             self.runstate = self.player_input(ctx);

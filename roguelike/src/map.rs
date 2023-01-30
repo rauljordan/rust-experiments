@@ -46,6 +46,7 @@ pub struct Map {
     pub revealed_tiles: Vec<bool>,
     pub visible_tiles: Vec<bool>,
     pub blocked: Vec<bool>,
+    pub tile_content: Vec<Vec<Entity>>,
 }
 
 impl Map {
@@ -91,6 +92,12 @@ impl Map {
     pub fn populate_blocked(&mut self) {
         for (i, tile) in self.tiles.iter_mut().enumerate() {
             self.blocked[i] = *tile == TileType::Wall;
+        }
+    }
+
+    pub fn clear_content_index(&mut self) {
+        for content in self.tile_content.iter_mut() {
+            content.clear();
         }
     }
 }
@@ -159,6 +166,7 @@ pub fn rand_map_rooms_and_corridors() -> Map {
         revealed_tiles: vec![false; 80 * 50],
         visible_tiles: vec![false; 80 * 50],
         blocked: vec![false; 80 * 50],
+        tile_content: vec![Vec::new(); 80 * 50],
     };
     const MAX_ROOMS: i32 = 30;
     const MIN_SIZE: i32 = 6;
@@ -171,7 +179,7 @@ pub fn rand_map_rooms_and_corridors() -> Map {
         let h = rng.range(MIN_SIZE, MAX_SIZE);
         let x = rng.roll_dice(1, map.width - w - 1) - 1;
         let y = rng.roll_dice(1, map.height - h - 1) - 1;
-        let mut new_room = Rect::new(x, y, w, h);
+        let new_room = Rect::new(x, y, w, h);
         let mut ok = true;
         for other_room in map.rooms.iter() {
             if new_room.intersect(other_room) {
