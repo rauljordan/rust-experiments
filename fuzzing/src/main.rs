@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -23,19 +23,48 @@ impl Tracker {
 }
 
 fn main() {
-    let mut emu = Emulator::new(1024 * 1024);
-    let tmp = emu.mmu.allocate(4).unwrap();
-    emu.mmu.write_from(tmp, b"asdf").unwrap();
+    // 32 Mb emu.
+    let mut emu = Emulator::new(32 * 1024 * 1024);
+    emu.load(
+        "../example/a.out",
+        &[
+            Section {
+                file_off: 0x0000000000000000,
+                virt_addr: VirtAddr(0x0000000000000000),
+                file_size: 0x00000000000005f0,
+                mem_size: 0x00000000000005f0,
+                permissions: Perm(PERM_READ),
+            },
+            Section {
+                file_off: 0x0000000000001000,
+                virt_addr: VirtAddr(0x0000000000001000),
+                file_size: 0x0000000000000145,
+                mem_size: 0x0000000000000145,
+                permissions: Perm(PERM_READ | PERM_EXEC),
+            },
+            Section {
+                file_off: 0x0000000000002df0,
+                virt_addr: VirtAddr(0x0000000000003df0),
+                file_size: 0x0000000000000220,
+                mem_size: 0x0000000000000228,
+                permissions: Perm(PERM_READ | PERM_WRITE),
+            },
+        ],
+    )
+    .expect("Failed to load into address space");
+
     {
-        let mut forked = emu.mmu.fork();
-        for ii in 0..100_100_100 {
-            emu.mmu.write_from(tmp, b"asdf").unwrap();
-            forked.reset(&emu.mmu);
+        let mut forked = emu.fork();
+        for _ in 0..1_000_000 {
+            let mut tmp = [0u8; 4];
+            emu.mmu.read_into(VirtAddr(0x1040), &mut tmp).unwrap();
+            println!("{:#02x?}", tmp);
+            forked.mmu.reset(&emu.mmu);
         }
     }
 }
 
-fn fuzzy_main() -> io::Result<()> {
+fn fuzz_main() -> io::Result<()> {
     let wd = env::current_dir().unwrap();
     let corpus_path = wd.join("fuzzing/corpus");
     let entries: Vec<Vec<u8>> = fs::read_dir(corpus_path)
@@ -87,12 +116,9 @@ fn fuzz_entries(entries: &Vec<Vec<u8>>) -> io::Result<()> {
     Ok(())
 }
 
-/// Building a custom fuzzer:
-/// Idea is that we'll assume we are fuzzing rust code
-/// by providing a function with random inputs as much
-/// as possible. However, to do this, we might want
-/// to pick from a corpus that we know wil work
-/// effectively.
+/// Building a custom fuzzer: Idea is that we'll assume we are fuzzing rust code
+/// by providing a function with random inputs as much as possible. However, to do this,
+/// we might want to pick from a corpus that we know wil work effectively.
 fn fuzz(input: &[u8]) -> io::Result<()> {
     // Write the input to a file, and then try it in objdump.
     let fpath = "/tmp/trial";

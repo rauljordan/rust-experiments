@@ -1,6 +1,7 @@
 #![feature(naked_functions)]
 mod atomics;
 mod green_threads;
+mod spin_lock;
 
 use green_threads::*;
 

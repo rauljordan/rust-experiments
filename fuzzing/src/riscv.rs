@@ -1,48 +1,71 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn dirty() {
-        let mut emu = Emulator::new(1024 * 1024);
-        let tmp = emu.mmu.allocate(4096).unwrap();
-        let data = b"asdf";
-        emu.mmu.write_from(VirtAddr(tmp.0), data).unwrap();
-        println!("Original dirty {:x?}", emu.mmu.dirty);
+use std::{io, path::Path};
 
-        {
-            let mut forked = emu.mmu.fork();
-            // Write and read into forked mem.
-            forked.write_from(VirtAddr(tmp.0), data).unwrap();
-            let mut bytes = [0u8; 4];
-            forked.read_into(tmp, &mut bytes).unwrap();
-            println!("Forked dirty {:x?}", forked.dirty);
+pub struct Section {
+    pub file_off: usize,
+    pub virt_addr: VirtAddr,
+    pub file_size: usize,
+    pub mem_size: usize,
+    pub permissions: Perm,
+}
 
-            forked.reset(&emu.mmu);
+pub struct Emulator {
+    /// Memory for the emulator
+    pub mmu: Mmu,
+}
 
-            let mut bytes = [0u8; 4];
-            let read_result = forked.read_into(tmp, &mut bytes);
-            println!("{:?}", read_result);
-
-            println!("Forked after reset {:x?}", forked.dirty);
+impl Emulator {
+    pub fn new(size: usize) -> Self {
+        Self {
+            mmu: Mmu::new(size),
         }
     }
-    #[test]
-    fn allocate_then_write_then_read() {
-        let mut emu = Emulator::new(1024 * 1024);
-        let tmp = emu.mmu.allocate(4096);
-        assert_eq!(tmp.is_some(), true);
-        let tmp = tmp.unwrap();
-        let data = b"asdf";
-        assert_eq!(emu.mmu.write_from(VirtAddr(tmp.0), data).is_some(), true);
-        let mut buf = vec![0u8; 32];
-        assert_eq!(emu.mmu.read_into(tmp, &mut buf).is_none(), true);
+    pub fn fork(&mut self) -> Self {
+        Self {
+            mmu: self.mmu.fork(),
+        }
+    }
+    pub fn load<P: AsRef<Path>>(&mut self, filename: P, sections: &[Section]) -> Option<()> {
+        let contents = std::fs::read(filename).ok()?;
+        for section in sections {
+            // Allow writable permissions.
+            self.mmu
+                .set_permissions(section.virt_addr, section.mem_size, Perm(PERM_WRITE))?;
+
+            // Write from contents.
+            self.mmu.write_from(
+                section.virt_addr,
+                contents.get(section.file_off..section.file_off.checked_add(section.file_size)?)?,
+            )?;
+
+            // Write in any paddings.
+            if section.mem_size > section.file_size {
+                let padding = vec![0u8; section.mem_size - section.file_size];
+                self.mmu.write_from(
+                    VirtAddr(section.virt_addr.0.checked_add(section.file_size)?),
+                    &padding,
+                )?;
+            }
+
+            // Reset.
+            self.mmu
+                .set_permissions(section.virt_addr, section.mem_size, Perm(PERM_READ))?;
+
+            // Update the allocator beyond any sections.
+            self.mmu.cur_alc = VirtAddr(std::cmp::max(
+                self.mmu.cur_alc.0,
+                (section.virt_addr.0 + section.mem_size + 0xf) & !0xf,
+            ));
+        }
+
+        println!("{:#x?}\n", self.mmu.cur_alc);
+        Some(())
     }
 }
 
-const PERM_READ: u8 = 1 << 0;
-const PERM_WRITE: u8 = 1 << 1;
-const PERM_EXEC: u8 = 1 << 2;
-const PERM_RAW: u8 = 1 << 3;
+pub const PERM_READ: u8 = 1 << 0;
+pub const PERM_WRITE: u8 = 1 << 1;
+pub const PERM_EXEC: u8 = 1 << 2;
+pub const PERM_RAW: u8 = 1 << 3;
 
 /// Block size used for resetting and tracking memory which has been
 /// written-to. The bigger this is, the fewer but more expensive memcpys need to occur.
@@ -54,7 +77,7 @@ const DIRTY_BLOCK_SIZE: usize = 4096;
 pub struct Perm(pub u8);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct VirtAddr(usize);
+pub struct VirtAddr(pub usize);
 
 /// Isolated memory space.
 pub struct Mmu {
@@ -190,15 +213,43 @@ impl Mmu {
     }
 }
 
-pub struct Emulator {
-    /// Memory for the emulator
-    pub mmu: Mmu,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn dirty() {
+        let mut emu = Emulator::new(1024 * 1024);
+        let tmp = emu.mmu.allocate(4096).unwrap();
+        let data = b"asdf";
+        emu.mmu.write_from(VirtAddr(tmp.0), data).unwrap();
+        println!("Original dirty {:x?}", emu.mmu.dirty);
 
-impl Emulator {
-    pub fn new(size: usize) -> Self {
-        Self {
-            mmu: Mmu::new(size),
+        {
+            let mut forked = emu.mmu.fork();
+            // Write and read into forked mem.
+            forked.write_from(VirtAddr(tmp.0), data).unwrap();
+            let mut bytes = [0u8; 4];
+            forked.read_into(tmp, &mut bytes).unwrap();
+            println!("Forked dirty {:x?}", forked.dirty);
+
+            forked.reset(&emu.mmu);
+
+            let mut bytes = [0u8; 4];
+            let read_result = forked.read_into(tmp, &mut bytes);
+            println!("{:?}", read_result);
+
+            println!("Forked after reset {:x?}", forked.dirty);
         }
+    }
+    #[test]
+    fn allocate_then_write_then_read() {
+        let mut emu = Emulator::new(1024 * 1024);
+        let tmp = emu.mmu.allocate(4096);
+        assert_eq!(tmp.is_some(), true);
+        let tmp = tmp.unwrap();
+        let data = b"asdf";
+        assert_eq!(emu.mmu.write_from(VirtAddr(tmp.0), data).is_some(), true);
+        let mut buf = vec![0u8; 32];
+        assert_eq!(emu.mmu.read_into(tmp, &mut buf).is_none(), true);
     }
 }

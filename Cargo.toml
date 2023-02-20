@@ -10,5 +10,6 @@ members = [
     "blackjack-rs",
     "roguelike",
     "bevygame",
+    "wasm-mutator"
 ]
 resolver = "2" # Important! wgpu/Bevy needs this!
