@@ -40,7 +40,7 @@ impl Emulator {
     pub fn run(&mut self) {
         loop {
             let pc = self.reg(Register::Pc);
-            let inst: i32 = self
+            let inst: u32 = self
                 .mmu
                 .read_perms(VirtAddr(pc as usize), Perm(PERM_READ))
                 .unwrap();
@@ -53,10 +53,12 @@ impl Emulator {
             match opcode {
                 // AUIPC
                 0b0010111 => {
-                    println!("Got AUIPC");
+                    let inst = Utype::from(inst);
+                    self.set_reg(inst.rd, (inst.imm as i64 as u64).wrapping_add(pc));
                 }
-                _ => unimplemented!("Unimplemented opcode: {:#x}\n", opcode),
+                _ => unimplemented!("Unimplemented opcode: {:b}\n", opcode),
             }
+            self.set_reg(Register::Pc, pc.wrapping_add(4));
         }
     }
     pub fn load<P: AsRef<Path>>(&mut self, filename: P, sections: &[Section]) -> Option<()> {
@@ -95,18 +97,29 @@ impl Emulator {
     }
 }
 
+#[derive(Debug)]
 struct Utype {
-    imm: i64,
+    imm: i32,
     rd: Register,
 }
 
-impl From<u8> for Register {
-    fn from(value: u8) -> Self {
-        assert!(value < 32);
+impl From<u32> for Utype {
+    fn from(inst: u32) -> Self {
+        Utype {
+            imm: (inst & !0xfff) as i32,
+            rd: Register::from((inst >> 7) & 0b11111),
+        }
+    }
+}
+
+impl From<u32> for Register {
+    fn from(value: u32) -> Self {
+        assert!(value < 33);
         unsafe { core::ptr::read_unaligned(&(value as usize) as *const usize as *const Register) }
     }
 }
 
+#[derive(Debug)]
 #[repr(usize)]
 pub enum Register {
     Zero = 0,
@@ -255,11 +268,11 @@ impl Mmu {
         Some(())
     }
 
-    pub fn read_perms(&mut self, addr: VirtAddr, exp_perms: Perm) -> Result<i32, ()> {
+    pub fn read_perms(&mut self, addr: VirtAddr, exp_perms: Perm) -> Result<u32, ()> {
         let mut tmp = [0u8; 16];
-        self.read_into_perms(addr, &mut tmp[..core::mem::size_of::<i32>()], exp_perms)
+        self.read_into_perms(addr, &mut tmp[..core::mem::size_of::<u32>()], exp_perms)
             .unwrap();
-        Ok(unsafe { core::ptr::read_unaligned(tmp.as_ptr() as *const i32) })
+        Ok(unsafe { core::ptr::read_unaligned(tmp.as_ptr() as *const u32) })
     }
 
     pub fn read_into(&mut self, addr: VirtAddr, buf: &mut [u8]) -> Option<()> {
