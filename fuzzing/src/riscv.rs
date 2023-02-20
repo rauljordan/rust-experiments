@@ -11,17 +11,52 @@ pub struct Section {
 pub struct Emulator {
     /// Memory for the emulator
     pub mmu: Mmu,
+    registers: [u64; 33],
 }
 
 impl Emulator {
     pub fn new(size: usize) -> Self {
         Self {
             mmu: Mmu::new(size),
+            registers: [0u64; 33],
         }
     }
     pub fn fork(&mut self) -> Self {
         Self {
             mmu: self.mmu.fork(),
+            registers: self.registers.clone(),
+        }
+    }
+    pub fn reset(&mut self, other: &Self) {
+        self.mmu.reset(&other.mmu);
+        self.registers = other.registers;
+    }
+    pub fn reg(&self, r: Register) -> u64 {
+        self.registers[r as usize]
+    }
+    pub fn set_reg(&mut self, r: Register, val: u64) {
+        self.registers[r as usize] = val
+    }
+    pub fn run(&mut self) {
+        loop {
+            let pc = self.reg(Register::Pc);
+            let inst: i32 = self
+                .mmu
+                .read_perms(VirtAddr(pc as usize), Perm(PERM_READ))
+                .unwrap();
+
+            print!("Instruction: {}\n", inst);
+            let opcode = inst & 0x0000007f;
+            print!("Instruction: {:#x}\n", inst);
+            print!("Opcode: {:#x}\n", opcode);
+            print!("Opcode: {:b}\n", opcode);
+            match opcode {
+                // AUIPC
+                0b0010111 => {
+                    println!("Got AUIPC");
+                }
+                _ => unimplemented!("Unimplemented opcode: {:#x}\n", opcode),
+            }
         }
     }
     pub fn load<P: AsRef<Path>>(&mut self, filename: P, sections: &[Section]) -> Option<()> {
@@ -56,10 +91,57 @@ impl Emulator {
                 (section.virt_addr.0 + section.mem_size + 0xf) & !0xf,
             ));
         }
-
-        println!("{:#x?}\n", self.mmu.cur_alc);
         Some(())
     }
+}
+
+struct Utype {
+    imm: i64,
+    rd: Register,
+}
+
+impl From<u8> for Register {
+    fn from(value: u8) -> Self {
+        assert!(value < 32);
+        unsafe { core::ptr::read_unaligned(&(value as usize) as *const usize as *const Register) }
+    }
+}
+
+#[repr(usize)]
+pub enum Register {
+    Zero = 0,
+    Ra,
+    Sp,
+    Gp,
+    Tp,
+    T0,
+    T1,
+    T2,
+    S0,
+    S1,
+    A0,
+    A1,
+    A2,
+    A3,
+    A4,
+    A5,
+    A6,
+    A7,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
+    T3,
+    T4,
+    T5,
+    T6,
+    Pc,
 }
 
 pub const PERM_READ: u8 = 1 << 0;
@@ -172,21 +254,43 @@ impl Mmu {
         }
         Some(())
     }
+
+    pub fn read_perms(&mut self, addr: VirtAddr, exp_perms: Perm) -> Result<i32, ()> {
+        let mut tmp = [0u8; 16];
+        self.read_into_perms(addr, &mut tmp[..core::mem::size_of::<i32>()], exp_perms)
+            .unwrap();
+        Ok(unsafe { core::ptr::read_unaligned(tmp.as_ptr() as *const i32) })
+    }
+
     pub fn read_into(&mut self, addr: VirtAddr, buf: &mut [u8]) -> Option<()> {
+        self.read_into_perms(addr, buf, Perm(PERM_READ))
+    }
+
+    /// Read the memory at `addr` into `buf`
+    /// This function checks to see if all bits in `exp_perms` are set in the
+    /// permission bytes. If this is zero, we ignore permissions entirely.
+    pub fn read_into_perms(
+        &mut self,
+        addr: VirtAddr,
+        buf: &mut [u8],
+        exp_perms: Perm,
+    ) -> Option<()> {
         let perms = self
             .permissions
             .get(addr.0..addr.0.checked_add(buf.len())?)?;
 
-        if !perms.iter().all(|x| (x.0 & PERM_READ) != 0) {
-            return None;
+        for (idx, &perm) in perms.iter().enumerate() {
+            if (perm.0 & exp_perms.0) != exp_perms.0 {
+                return None;
+            }
         }
+
         buf.copy_from_slice(
             self.memory
                 .get_mut(addr.0..addr.0.checked_add(buf.len())?)?,
         );
         Some(())
     }
-    pub fn read(&mut self, addr: VirtAddr) {}
 
     // Allocates a region of memory as RW in the address space
     pub fn allocate(&mut self, size: usize) -> Option<VirtAddr> {

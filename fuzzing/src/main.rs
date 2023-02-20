@@ -30,38 +30,24 @@ fn main() {
         &[
             Section {
                 file_off: 0x0000000000000000,
-                virt_addr: VirtAddr(0x0000000000000000),
-                file_size: 0x00000000000005f0,
-                mem_size: 0x00000000000005f0,
-                permissions: Perm(PERM_READ),
-            },
-            Section {
-                file_off: 0x0000000000001000,
-                virt_addr: VirtAddr(0x0000000000001000),
-                file_size: 0x0000000000000145,
-                mem_size: 0x0000000000000145,
+                virt_addr: VirtAddr(0x0000000000010000),
+                file_size: 0x0000000000000464,
+                mem_size: 0x0000000000000464,
                 permissions: Perm(PERM_READ | PERM_EXEC),
             },
             Section {
-                file_off: 0x0000000000002df0,
-                virt_addr: VirtAddr(0x0000000000003df0),
-                file_size: 0x0000000000000220,
-                mem_size: 0x0000000000000228,
+                file_off: 0x0000000000000464,
+                virt_addr: VirtAddr(0x0000000000011464),
+                file_size: 0x000000000000077c,
+                mem_size: 0x00000000000007b4,
                 permissions: Perm(PERM_READ | PERM_WRITE),
             },
         ],
     )
     .expect("Failed to load into address space");
 
-    {
-        let mut forked = emu.fork();
-        for _ in 0..1_000_000 {
-            let mut tmp = [0u8; 4];
-            emu.mmu.read_into(VirtAddr(0x1040), &mut tmp).unwrap();
-            println!("{:#02x?}", tmp);
-            forked.mmu.reset(&emu.mmu);
-        }
-    }
+    emu.set_reg(Register::Pc, 0x10116);
+    emu.run();
 }
 
 fn fuzz_main() -> io::Result<()> {
