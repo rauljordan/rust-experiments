@@ -45,16 +45,17 @@ impl Emulator {
                 .read_perms(VirtAddr(pc as usize), Perm(PERM_READ))
                 .unwrap();
 
-            print!("Instruction: {}\n", inst);
             let opcode = inst & 0x0000007f;
-            print!("Instruction: {:#x}\n", inst);
-            print!("Opcode: {:#x}\n", opcode);
-            print!("Opcode: {:b}\n", opcode);
             match opcode {
                 // AUIPC
                 0b0010111 => {
                     let inst = Utype::from(inst);
                     self.set_reg(inst.rd, (inst.imm as i64 as u64).wrapping_add(pc));
+                }
+                // LUI
+                0b0110111 => {
+                    let inst = Utype::from(inst);
+                    self.set_reg(inst.rd, inst.imm as i64 as u64);
                 }
                 _ => unimplemented!("Unimplemented opcode: {:b}\n", opcode),
             }
@@ -94,6 +95,21 @@ impl Emulator {
             ));
         }
         Some(())
+    }
+}
+
+#[derive(Debug)]
+struct Jtype {
+    imm: i32,
+    rd: Register,
+}
+
+impl From<u32> for Jtype {
+    fn from(inst: u32) -> Self {
+        Jtype {
+            imm: (inst & !0xfff) as i32,
+            rd: Register::from((inst >> 7) & 0b11111),
+        }
     }
 }
 
