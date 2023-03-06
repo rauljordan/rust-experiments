@@ -10,5 +10,6 @@ members = [
     "blackjack-rs",
     "roguelike",
     "bevygame",
+    "searcher"
 ]
 resolver = "2" # Important! wgpu/Bevy needs this!
