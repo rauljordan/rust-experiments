@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "advent",
+    "bloom",
     "c-exp",
     "collections-profiling",
     "fuzzing",

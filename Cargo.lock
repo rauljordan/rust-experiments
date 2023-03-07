@@ -1203,6 +1203,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bloom"
+version = "0.1.0"
+dependencies = [
+ "sha3 0.10.6",
+]
+
+[[package]]
 name = "bracket-algorithm-traits"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
