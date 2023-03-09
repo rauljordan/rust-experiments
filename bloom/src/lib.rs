@@ -10,34 +10,40 @@ fn hash_bloom(elem: &str, i: u64, m: u64) -> usize {
     let mut handle = result.take(8);
     handle.read(&mut buf).unwrap();
     let num: u64 = u64::from_be_bytes(buf).checked_add(i).unwrap();
-    println!("{} and {}", num, num % m);
     (num % m) as usize
 }
 
 struct BloomFilter {
-    // TODO: Bad. a bool is 1 byte and we want 1 bit for max-efficiency.
-    pub bits: Vec<bool>,
+    pub bits: Vec<u8>,
     hash_fns: Vec<Box<dyn Fn(&str) -> usize>>,
 }
 
 impl BloomFilter {
-    pub fn new(m: usize, k: usize) -> Self {
-        assert!(k > 0 && k < m);
+    pub fn new(num_items: usize, num_hash_fns: usize) -> Self {
+        assert!(num_hash_fns > 0 && num_hash_fns < num_items);
         let mut hash_fns: Vec<Box<dyn Fn(&str) -> usize>> = vec![];
-        for i in 0..=k {
-            let f = Box::new(move |elem: &str| hash_bloom(&elem, i as u64, m as u64));
+        for i in 0..=num_hash_fns {
+            let f = Box::new(move |elem: &str| hash_bloom(&elem, i as u64, num_items as u64));
             hash_fns.push(f);
         }
+        let mut size = num_items / 8;
+        if num_items % 8 > 0 {
+            size += 1;
+        }
         Self {
-            bits: iter::repeat(false).take(m).collect(),
+            bits: iter::repeat(0).take(size).collect(),
             hash_fns,
         }
     }
     pub fn insert(&mut self, elem: String) {
         let indices: Vec<usize> = self.hash_fns.iter().map(|f| f(elem.as_str())).collect();
         for idx in indices.into_iter() {
-            match self.bits.get_mut(idx) {
-                Some(b) => *b = true,
+            let pos = idx / 8;
+            let pos_within_bits = idx % 8;
+            match self.bits.get_mut(pos) {
+                Some(b) => {
+                    *b |= 1 << pos_within_bits;
+                }
                 None => panic!("index did not exist"),
             }
         }
@@ -45,9 +51,12 @@ impl BloomFilter {
     pub fn has(&self, elem: String) -> bool {
         for f in self.hash_fns.iter() {
             let idx = f(elem.as_str());
-            match self.bits.get(idx) {
+            let pos = idx / 8;
+            let pos_within_bits = idx % 8;
+            match self.bits.get(pos) {
                 Some(b) => {
-                    if !b {
+                    let bit = (*b >> pos_within_bits) & 1;
+                    if bit == 0 {
                         return false;
                     }
                 }
@@ -64,10 +73,10 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let mut bf = BloomFilter::new(10, 3);
-        assert_eq!(bf.bits.len(), 10);
+        let mut bf = BloomFilter::new(41, 3);
+        assert_eq!(bf.bits.len(), 6);
         bf.insert("hello".to_string());
         println!("{}", bf.has("hello".to_string()));
-        println!("{}", bf.has("world".to_string()));
+        assert_eq!(false, bf.has("world".to_string()));
     }
 }
