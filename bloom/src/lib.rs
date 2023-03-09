@@ -1,7 +1,77 @@
 use sha3::{Digest, Sha3_256};
 use std::{io::Read, iter};
 
-fn hash_bloom(elem: &str, i: u64, m: u64) -> usize {
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        let mut bf = BloomFilter::new(41, 3);
+        assert_eq!(bf.bits.len(), 6);
+        bf.insert("hello".to_string());
+        println!("{}", bf.has("hello".to_string()));
+        assert_eq!(false, bf.has("world".to_string()));
+    }
+
+    /// Trying out varying values of M and K to determine
+    /// false positive rates and see how these evolve based on
+    /// the number of insertions into the filter.
+    //#[test]
+    fn tweaking_parameters() {
+        for n in 3..=20 {
+            let elems = (0..n).map(|i| i.to_string()).collect::<Vec<String>>();
+            for k in 1..=n - 1 {
+                let mut false_positives = 0;
+                let mut bf = BloomFilter::new(n, k);
+                for (idx, elem) in elems.iter().enumerate() {
+                    bf.insert(elem.to_string());
+                    if bf.has("foo".to_string()) {
+                        false_positives += 1;
+                    }
+                    let fp_rate = false_positives as f64 / elems.len() as f64;
+                    println!(
+                        "capacity={}, num_hash_fns={}, elems_inserted={}, false_positive_rate={}",
+                        n,
+                        k,
+                        idx + 1,
+                        fp_rate,
+                    );
+                }
+            }
+        }
+    }
+
+    // TODO: Use the plotters library to understand how it goes up
+    // and the relationship between the different parameters.
+    // Criterion benchmark blackbox against a prod crate.
+    // Flame graph to understand bottlenecks.
+    // Unsafe?
+    #[test]
+    fn large_capacity() {
+        let elems = (0..1000).map(|i| i.to_string()).collect::<Vec<String>>();
+        for k in 1..=20 {
+            let mut false_positives = 0;
+            let mut bf = BloomFilter::new(1000, k);
+            for (idx, elem) in elems.iter().enumerate() {
+                bf.insert(elem.to_string());
+                if bf.has("foo".to_string()) {
+                    false_positives += 1;
+                }
+                let fp_rate = false_positives as f64 / elems.len() as f64;
+                println!(
+                    "capacity=1000, num_hash_fns={}, elems_inserted={}, false_positive_rate={}",
+                    k,
+                    idx + 1,
+                    fp_rate,
+                );
+            }
+        }
+    }
+}
+
+// TODO: Can we experiment with different hash function?
+fn hashy_hash(elem: &str, i: u64, m: u64) -> usize {
     assert!(i < 32);
     let mut hasher = Sha3_256::new();
     hasher.update(elem);
@@ -23,7 +93,7 @@ impl BloomFilter {
         assert!(num_hash_fns > 0 && num_hash_fns < num_items);
         let mut hash_fns: Vec<Box<dyn Fn(&str) -> usize>> = vec![];
         for i in 0..=num_hash_fns {
-            let f = Box::new(move |elem: &str| hash_bloom(&elem, i as u64, num_items as u64));
+            let f = Box::new(move |elem: &str| hashy_hash(&elem, i as u64, num_items as u64));
             hash_fns.push(f);
         }
         let mut size = num_items / 8;
@@ -64,19 +134,5 @@ impl BloomFilter {
             }
         }
         return true;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let mut bf = BloomFilter::new(41, 3);
-        assert_eq!(bf.bits.len(), 6);
-        bf.insert("hello".to_string());
-        println!("{}", bf.has("hello".to_string()));
-        assert_eq!(false, bf.has("world".to_string()));
     }
 }
