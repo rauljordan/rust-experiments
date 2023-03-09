@@ -1,15 +1,21 @@
 use sha3::{Digest, Sha3_256};
-use std::iter;
+use std::{io::Read, iter};
 
-fn hash_bloom(elem: &str, i: usize, m: usize) -> usize {
+fn hash_bloom(elem: &str, i: u64, m: u64) -> usize {
     assert!(i < 32);
     let mut hasher = Sha3_256::new();
     hasher.update(elem);
     let result = hasher.finalize();
-    (result[i] as usize) % m
+    let mut buf = [0; 8];
+    let mut handle = result.take(8);
+    handle.read(&mut buf).unwrap();
+    let num: u64 = u64::from_be_bytes(buf).checked_add(i).unwrap();
+    println!("{} and {}", num, num % m);
+    (num % m) as usize
 }
 
 struct BloomFilter {
+    // TODO: Bad. a bool is 1 byte and we want 1 bit for max-efficiency.
     pub bits: Vec<bool>,
     hash_fns: Vec<Box<dyn Fn(&str) -> usize>>,
 }
@@ -19,7 +25,7 @@ impl BloomFilter {
         assert!(k > 0 && k < m);
         let mut hash_fns: Vec<Box<dyn Fn(&str) -> usize>> = vec![];
         for i in 0..=k {
-            let f = Box::new(move |elem: &str| hash_bloom(&elem, i, m));
+            let f = Box::new(move |elem: &str| hash_bloom(&elem, i as u64, m as u64));
             hash_fns.push(f);
         }
         Self {
@@ -36,19 +42,19 @@ impl BloomFilter {
             }
         }
     }
-    pub fn not_in(&self, elem: String) -> bool {
+    pub fn has(&self, elem: String) -> bool {
         for f in self.hash_fns.iter() {
             let idx = f(elem.as_str());
             match self.bits.get(idx) {
                 Some(b) => {
                     if !b {
-                        return true;
+                        return false;
                     }
                 }
                 None => panic!("index did not exist"),
             }
         }
-        return false;
+        return true;
     }
 }
 
@@ -61,7 +67,7 @@ mod tests {
         let mut bf = BloomFilter::new(10, 3);
         assert_eq!(bf.bits.len(), 10);
         bf.insert("hello".to_string());
-        println!("{}", bf.not_in("hello".to_string()));
-        println!("{}", bf.not_in("world".to_string()));
+        println!("{}", bf.has("hello".to_string()));
+        println!("{}", bf.has("world".to_string()));
     }
 }
